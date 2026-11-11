@@ -1,69 +1,180 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useMemo, useState } from "react";
+import { BookOpen, Columns3, Plus, Table2, Trash2 } from "lucide-react";
+import { useStore } from "@/lib/store";
+import { formatDate, useT, type Key } from "@/lib/i18n";
+import { descriptorsFor, getDishType } from "@/lib/dishTypes";
+import { sortLogs } from "@/lib/derive";
+import { matchesQuery } from "@/lib/text";
+import { VERDICTS, type Log, type Verdict } from "@/lib/types";
+import { Page } from "@/components/AppShell";
+import { Button, cx, EmptyState, PageHeader, Tag, VERDICT_STYLE, VerdictBadge, VerdictIcon } from "@/components/ui";
+
+export default function DiaryPage() {
+  const { t, lang, pick, tagLabel } = useT();
+  const places = useStore((s) => s.places);
+  const dishes = useStore((s) => s.dishes);
+  const logs = useStore((s) => s.logs);
+  const openLog = useStore((s) => s.openLog);
+  const setPeek = useStore((s) => s.setPeek);
+  const deleteLog = useStore((s) => s.deleteLog);
+  const clearSamples = useStore((s) => s.clearSamples);
+
+  const [view, setView] = useState<"table" | "board">("table");
+  const [verdict, setVerdict] = useState<Verdict | "all">("all");
+  const [query, setQuery] = useState("");
+
+  const rows = useMemo(() => {
+    const placeMap = new Map(places.map((p) => [p.id, p]));
+    const dishMap = new Map(dishes.map((d) => [d.id, d]));
+    return sortLogs(logs)
+      .map((log) => ({ log, dish: dishMap.get(log.dishId), place: placeMap.get(log.placeId) }))
+      .filter((r) => r.dish && r.place)
+      .filter((r) => verdict === "all" || r.log.verdict === verdict)
+      .filter((r) => !query.trim() || matchesQuery(`${r.dish!.name} ${r.place!.name} ${r.place!.area} ${r.log.note}`, query));
+  }, [places, dishes, logs, verdict, query]);
+
+  const counts = useMemo(() => {
+    const c = { love: 0, ok: 0, never: 0 };
+    for (const l of logs) c[l.verdict] += 1;
+    return c;
+  }, [logs]);
+
+  const hasSamples = places.some((p) => p.sample);
+
+  const chipTags = (log: Log, typeId: string | null) => {
+    const descriptors = descriptorsFor(typeId);
+    return Object.entries(log.chips)
+      .map(([id, value]) => {
+        const d = descriptors.find((x) => x.id === id);
+        return d ? `${pick(d.label)}: ${pick(d.scale[value + 1])}` : null;
+      })
+      .filter(Boolean) as string[];
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <Page>
+      <PageHeader icon={<BookOpen size={24} />} title={t("diaryTitle")} sub={t("diarySub")}
+        actions={<Button variant="primary" onClick={() => openLog()}><Plus size={16} />{t("logMeal")}</Button>} />
+
+      {hasSamples && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-accent-soft px-4 py-2.5 text-sm text-accent">
+          <span>{t("sampleBanner")}</span>
+          <Button small onClick={clearSamples}>{t("clearSamples")}</Button>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line pb-2">
+        <div className="flex gap-1" role="tablist">
+          {([["table", "viewTable", Table2], ["board", "viewBoard", Columns3]] as const).map(([id, key, Icon]) => (
+            <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
+              className={cx("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm", view === id ? "bg-hover font-medium" : "text-muted hover:bg-hover")}>
+              <Icon size={15} />{t(key)}
+            </button>
+          ))}
         </div>
-      </main>
-    </div>
+        <div className="flex flex-wrap gap-1">
+          {(["all", ...VERDICTS] as const).map((v) => (
+            <button key={v} type="button" aria-pressed={verdict === v} onClick={() => setVerdict(v)}
+              className={cx("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs",
+                verdict === v ? (v === "all" ? "border-ink bg-ink text-bg" : cx(VERDICT_STYLE[v].soft, "border-transparent font-medium")) : "border-line text-muted hover:bg-hover")}>
+              {v !== "all" && <VerdictIcon verdict={v} size={11} />}
+              {t(v)}
+              <span className="opacity-70">{v === "all" ? logs.length : counts[v]}</span>
+            </button>
+          ))}
+        </div>
+        <input className="field ml-auto max-w-[200px] !py-1 text-sm" value={query} maxLength={60} placeholder={t("filter")} aria-label={t("filter")} onChange={(e) => setQuery(e.target.value)} />
+      </div>
+
+      {logs.length === 0 ? (
+        <EmptyState action={<Button variant="primary" onClick={() => openLog()}><Plus size={16} />{t("logMeal")}</Button>}>{t("emptyDiary")}</EmptyState>
+      ) : rows.length === 0 ? (
+        <EmptyState>{t("noMatch")}</EmptyState>
+      ) : view === "table" ? (
+        <>
+        {/* Phones get a card list; the table needs more width than they have. */}
+        <ul className="space-y-2 md:hidden">
+          {rows.map(({ log, dish, place }) => (
+            <li key={log.id}>
+              <button type="button" onClick={() => setPeek(place!.id)} className="block w-full rounded-lg border border-line bg-surface p-3 text-left">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium">{dish!.name}</span>
+                  <VerdictBadge verdict={log.verdict} />
+                </div>
+                <div className="mt-0.5 text-xs text-muted">{place!.name} · {t(`p_${log.platform}` as Key)} · {formatDate(log.date, lang)}</div>
+                {log.tags.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{log.tags.map((tag) => <Tag key={tag} tone="accent">{tagLabel(tag)}</Tag>)}</div>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-muted">
+                {(["colDish", "colPlace", "colVerdict", "colTaste", "colSource", "colDate"] as Key[]).map((k) => <th key={k} className="px-2 py-2 font-medium">{t(k)}</th>)}
+                <th className="w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ log, dish, place }) => {
+                const type = getDishType(dish!.typeId);
+                const chips = chipTags(log, dish!.typeId);
+                return (
+                  <tr key={log.id} className="group cursor-pointer border-b border-line hover:bg-hover" onClick={() => setPeek(place!.id)}>
+                    <td className="px-2 py-2.5 align-top">
+                      <button type="button" className="text-left font-medium" onClick={(e) => { e.stopPropagation(); setPeek(place!.id); }}>{dish!.name}</button>
+                      {type && <div className="text-xs text-muted">{pick(type.name)}</div>}
+                    </td>
+                    <td className="px-2 py-2.5 align-top">
+                      <div>{place!.name}</div>
+                      <div className="text-xs text-muted">{place!.area}</div>
+                    </td>
+                    <td className="px-2 py-2.5 align-top"><VerdictBadge verdict={log.verdict} /></td>
+                    <td className="max-w-[230px] px-2 py-2.5 align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {chips.slice(0, 2).map((c) => <Tag key={c}>{c}</Tag>)}
+                        {chips.length > 2 && <Tag>+{chips.length - 2}</Tag>}
+                        {log.tags.map((tag) => <Tag key={tag} tone="accent">{tagLabel(tag)}</Tag>)}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 align-top whitespace-nowrap text-muted">{t(`p_${log.platform}` as Key)}</td>
+                    <td className="px-2 py-2.5 align-top whitespace-nowrap text-muted">{formatDate(log.date, lang)}</td>
+                    <td className="px-1 py-2.5 align-top">
+                      <button type="button" aria-label={t("delete")} title={t("delete")} className="rounded p-1 text-muted opacity-0 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                        onClick={(e) => { e.stopPropagation(); if (window.confirm(t("confirmDeleteLog"))) deleteLog(log.id); }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        </>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3">
+          {VERDICTS.filter((v) => verdict === "all" || verdict === v).map((v) => {
+            const col = rows.filter((r) => r.log.verdict === v);
+            return (
+              <div key={v}>
+                <div className="mb-2 flex items-center gap-2"><VerdictBadge verdict={v} /><span className="text-xs text-muted">{col.length}</span></div>
+                <div className="space-y-2">
+                  {col.map(({ log, dish, place }) => (
+                    <button key={log.id} type="button" onClick={() => setPeek(place!.id)} className="block w-full rounded-lg border border-line bg-surface p-3 text-left shadow-sm hover:bg-hover">
+                      <div className="font-medium">{dish!.name}</div>
+                      <div className="text-xs text-muted">{place!.name} · {formatDate(log.date, lang)}</div>
+                      {log.note && <p className="mt-1.5 line-clamp-2 text-xs text-muted">{log.note}</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Page>
   );
 }

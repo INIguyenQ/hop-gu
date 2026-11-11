@@ -1,0 +1,181 @@
+"use client";
+
+import type { L, Lang } from "./types.ts";
+import { useStore } from "./store.ts";
+
+export const APP_NAME = "Hợp Gu"; // working name: change it here
+
+const D = {
+  tagline: ["Nhật ký món ăn của bạn", "Your personal dish diary"],
+  demo: ["Bản thử", "Demo"],
+  search: ["Tìm kiếm", "Search"],
+  searchHint: ["Đã ăn ở đây chưa?", "Have I eaten here?"],
+  searchPlaceholder: ["Tìm quán hoặc món… (không cần gõ dấu)", "Search a place or dish…"],
+  logMeal: ["Ghi món mới", "Log a meal"],
+  navDiary: ["Nhật ký", "Diary"],
+  navPlaces: ["Quán", "Places"],
+  navWishlist: ["Muốn thử", "Wishlist"],
+  navMap: ["Gần đây", "Nearby"],
+  navTaste: ["Gu của tôi", "My taste"],
+  navTwins: ["Bạn hợp gu", "Taste twins"],
+  navSettings: ["Cài đặt", "Settings"],
+  soon: ["Sắp có", "Soon"],
+  love: ["Mê", "Love"],
+  ok: ["Tạm ổn", "OK"],
+  never: ["Không ăn lại", "Never again"],
+  all: ["Tất cả", "All"],
+  diaryTitle: ["Nhật ký", "Diary"],
+  diarySub: ["Mọi món bạn đã ăn, ở bất kỳ ứng dụng nào. Một chạm để nhớ món nào mê, món nào né.", "Every dish you have eaten, on any app. One tap to remember what to love and what to avoid."],
+  viewTable: ["Bảng", "Table"],
+  viewBoard: ["Theo đánh giá", "By verdict"],
+  filter: ["Lọc nhanh…", "Filter…"],
+  colDish: ["Món", "Dish"],
+  colPlace: ["Quán", "Place"],
+  colVerdict: ["Đánh giá", "Verdict"],
+  colTaste: ["Vị", "Taste"],
+  colSource: ["Nguồn", "Source"],
+  colDate: ["Ngày", "Date"],
+  emptyDiary: ["Chưa có món nào. Ghi món đầu tiên của bạn.", "Nothing here yet. Log your first dish."],
+  noMatch: ["Không tìm thấy kết quả phù hợp.", "No matching results."],
+  sampleBanner: ["Đang hiển thị dữ liệu mẫu để bạn xem thử. Dữ liệu chỉ lưu trên trình duyệt này.", "Showing sample entries so you can look around. Data is saved only in this browser."],
+  clearSamples: ["Xoá dữ liệu mẫu", "Clear samples"],
+  sample: ["mẫu", "sample"],
+  placesTitle: ["Quán", "Places"],
+  placesSub: ["Mỗi quán được đánh giá theo từng món, không phải cả quán.", "Each place is judged dish by dish, not as a whole."],
+  notTried: ["Chưa thử", "Not tried"],
+  dishes: ["món", "dishes"],
+  lastVisit: ["Lần gần nhất", "Last visit"],
+  wishTitle: ["Muốn thử", "Wishlist"],
+  wishSub: ["Những quán bạn thấy hay hay và muốn thử sau.", "Places you spotted and want to try later."],
+  addWish: ["Thêm quán muốn thử", "Add a place to try"],
+  emptyWish: ["Chưa có quán nào trong danh sách.", "Your wishlist is empty."],
+  tried: ["Đã thử, ghi món", "Tried it, log dishes"],
+  remove: ["Bỏ", "Remove"],
+  mapTitle: ["Gần đây", "Nearby"],
+  layers: ["Lớp hiển thị", "Layers"],
+  layerLove: ["Quán có món mê", "Places I love"],
+  layerOk: ["Quán tạm ổn", "OK places"],
+  layerNever: ["Quán không ăn lại", "Never again"],
+  layerWish: ["Muốn thử", "Wishlist"],
+  layerTwins: ["Gợi ý từ người hợp gu", "Taste-twin suggestions"],
+  nearMe: ["Vị trí của tôi", "My location"],
+  locDenied: ["Không lấy được vị trí. Hãy cho phép truy cập vị trí trong trình duyệt.", "Could not get your location. Allow location access in the browser."],
+  locPrivacy: ["Vị trí chỉ dùng khi bạn bấm nút và không được lưu lại.", "Location is used only when you tap the button and is never saved."],
+  noPin: ["quán chưa có vị trí trên bản đồ", "places have no map pin yet"],
+  open: ["Mở", "Open"],
+  tasteTitle: ["Gu của tôi", "My taste"],
+  tasteSub: ["Hồ sơ khẩu vị được tính từ các món bạn mê và không ăn lại, theo từng loại món.", "Your taste profile, worked out per dish type from what you love and what you avoid."],
+  emptyTaste: ["Ghi vài món kèm mô tả vị để thấy gu của bạn hiện ra ở đây.", "Log a few dishes with taste chips to see your profile appear here."],
+  logsCount: ["lượt ăn", "logs"],
+  needMore: ["Cần thêm {n} lượt để đủ tin cậy", "{n} more logs for a reliable profile"],
+  reliable: ["Đủ dữ liệu", "Reliable"],
+  leanLow: ["Thiên về", "Leans"],
+  leanAny: ["Không quan trọng với bạn", "Does not matter to you"],
+  leanUnknown: ["Chưa đủ thông tin", "Not enough info"],
+  twinsNote: ["Khi có nhiều người dùng, hồ sơ này sẽ dùng để tìm người hợp gu với bạn theo từng món.", "Once more people join, this profile is what matches you with taste twins, dish type by dish type."],
+  settingsTitle: ["Cài đặt", "Settings"],
+  language: ["Ngôn ngữ", "Language"],
+  theme: ["Giao diện", "Appearance"],
+  themeSystem: ["Theo máy", "System"],
+  themeLight: ["Sáng", "Light"],
+  themeDark: ["Tối", "Dark"],
+  yourData: ["Dữ liệu của bạn", "Your data"],
+  dataNote: ["Ở bản thử này, mọi dữ liệu nằm trong trình duyệt của bạn, không gửi lên máy chủ nào.", "In this demo, everything stays in your browser. Nothing is sent to a server."],
+  exportData: ["Tải dữ liệu (JSON)", "Download my data (JSON)"],
+  loadSamples: ["Nạp dữ liệu mẫu", "Load sample entries"],
+  deleteAll: ["Xoá toàn bộ dữ liệu", "Delete all my data"],
+  confirmDeleteAll: ["Xoá toàn bộ quán, món và nhật ký trên trình duyệt này? Không thể hoàn tác.", "Delete every place, dish and log in this browser? This cannot be undone."],
+  confirmDeletePlace: ["Xoá quán này cùng mọi món và nhật ký của nó?", "Delete this place with all its dishes and logs?"],
+  confirmDeleteLog: ["Xoá lượt ghi này?", "Delete this log?"],
+  delete: ["Xoá", "Delete"],
+  cancel: ["Huỷ", "Cancel"],
+  save: ["Lưu", "Save"],
+  close: ["Đóng", "Close"],
+  menu: ["Mở menu", "Open menu"],
+  /* place picker */
+  stepPlace: ["Quán", "Place"],
+  pickPlaceHint: ["Gõ tên quán hoặc dán link từ Google Maps, Grab, ShopeeFood, beFood", "Type a name or paste a link from Google Maps, Grab, ShopeeFood or beFood"],
+  createPlace: ["Tạo quán mới", "Create new place"],
+  linkFrom: ["Link từ", "Link from"],
+  linkUnknown: ["Link này không thuộc ứng dụng được hỗ trợ nên sẽ không được lưu. Hãy gõ tên quán.", "This link is not from a supported app, so it will not be saved. Type the place name instead."],
+  linkShort: ["Link rút gọn không chứa tên quán. Hãy gõ tên quán bên dưới; link vẫn được lưu kèm.", "Short links do not contain the place name. Type the name below; the link is still saved with it."],
+  linkCheckName: ["Tên lấy từ link có thể thiếu dấu. Hãy sửa lại nếu cần.", "Names read from links may lack accents. Fix it if needed."],
+  alreadyHave: ["Có phải quán này không?", "Is it one of these?"],
+  placeName: ["Tên quán", "Place name"],
+  area: ["Khu vực", "Area"],
+  areaHint: ["Ví dụ: Quận 3, Bình Thạnh", "e.g. District 3, Bình Thạnh"],
+  kindShop: ["Quán / nhà hàng", "Shop / restaurant"],
+  kindStreet: ["Xe đẩy / vỉa hè", "Street vendor"],
+  hours: ["Giờ bán (không bắt buộc)", "Hours (optional)"],
+  hoursHint: ["Ví dụ: chỉ bán sáng 6–10 giờ", "e.g. mornings only, 6–10am"],
+  pin: ["Ghim vị trí", "Pin on map"],
+  pinHint: ["Bấm vào bản đồ để đặt ghim", "Click the map to drop the pin"],
+  pinSet: ["Đã ghim", "Pinned"],
+  usePlace: ["Dùng quán này", "Use this place"],
+  change: ["Đổi", "Change"],
+  /* log panel */
+  stepDishes: ["Món đã ăn", "Dishes"],
+  dishName: ["Tên món", "Dish name"],
+  dishType: ["Loại món", "Dish type"],
+  otherType: ["Khác", "Other"],
+  addDish: ["Thêm món", "Add another dish"],
+  tasteChips: ["Mô tả vị (không bắt buộc)", "Taste chips (optional)"],
+  chipsWhy: ["Mô tả món, không phải khen chê. Giúp tìm người hợp gu sau này.", "Describe the dish, not whether you liked it. This powers taste matching later."],
+  tags: ["Nhãn nhanh", "Quick tags"],
+  stepDetails: ["Chi tiết", "Details"],
+  orderedVia: ["Ăn qua", "Ordered via"],
+  date: ["Ngày", "Date"],
+  note: ["Ghi chú riêng", "Private note"],
+  notePh: ["Chỉ mình bạn thấy", "Only you can see this"],
+  saveMeal: ["Lưu vào nhật ký", "Save to diary"],
+  needPlace: ["Chọn quán trước", "Pick a place first"],
+  needDish: ["Thêm ít nhất một món và chọn đánh giá", "Add at least one dish with a verdict"],
+  knownDishes: ["Món đã ghi ở quán này", "Dishes logged here before"],
+  /* peek */
+  listings: ["Liên kết", "Links"],
+  dishesHere: ["Các món", "Dishes"],
+  history: ["Lịch sử", "History"],
+  addToWish: ["Thêm vào Muốn thử", "Add to wishlist"],
+  inWish: ["Đang trong Muốn thử", "On wishlist"],
+  directions: ["Chỉ đường", "Directions"],
+  times: ["lần", "times"],
+  /* platforms */
+  p_grab: ["GrabFood", "GrabFood"],
+  p_shopeefood: ["ShopeeFood", "ShopeeFood"],
+  p_befood: ["beFood", "beFood"],
+  p_gmaps: ["Google Maps", "Google Maps"],
+  p_dinein: ["Ăn tại quán", "Dine-in"],
+  p_other: ["Khác", "Other"],
+  /* tags */
+  tag_salty: ["Quá mặn", "Too salty"],
+  tag_small: ["Phần ít", "Small portion"],
+  tag_pricey: ["Giá cao", "Overpriced"],
+  tag_value: ["Đáng tiền", "Great value"],
+  tag_late: ["Giao trễ", "Late delivery"],
+  tag_sick: ["Bị đau bụng", "Made me sick"],
+} as const satisfies Record<string, readonly [string, string]>;
+
+export type Key = keyof typeof D;
+export const TAGS = ["salty", "small", "pricey", "value", "late", "sick"] as const;
+
+export function translate(lang: Lang, key: Key, vars?: Record<string, string | number>): string {
+  let s: string = D[key][lang === "vi" ? 0 : 1];
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+  return s;
+}
+
+export function useT() {
+  const lang = useStore((s) => s.lang);
+  return {
+    lang,
+    t: (key: Key, vars?: Record<string, string | number>) => translate(lang, key, vars),
+    pick: (l: L) => l[lang],
+    tagLabel: (tag: string) => (`tag_${tag}` in D ? translate(lang, `tag_${tag}` as Key) : tag),
+  };
+}
+
+export function formatDate(date: string, lang: Lang): string {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
+}

@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hợp Gu (working name)
 
-## Getting Started
+A personal dish diary: remember which dishes you loved and which to never order
+again, across GrabFood, ShopeeFood, beFood and dine-in. Later phases match
+people with the same taste on specific dishes.
 
-First, run the development server:
+This is the **Phase 1 web prototype**. It runs in demo mode: there is no login
+and no server database yet, and everything you enter is saved only in your own
+browser.
+
+## Run it
+
+```bash
+npm install
+```
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Other commands: `npm test` (logic tests), `npm run typecheck`, `npm run lint`,
+`npm run build`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## What is in it
 
-## Learn More
+| Screen | What it does |
+| --- | --- |
+| Diary (`/`) | Every dish logged, as a table or a board grouped by verdict |
+| Places (`/places`) | Each place with its per-dish verdict counts |
+| Wishlist (`/wishlist`) | Places to try later |
+| Nearby (`/map`) | Map of your own pins, with layers |
+| My taste (`/taste`) | Taste profile per dish type, computed from your logs |
+| Settings (`/settings`) | Language (Vietnamese / English), light or dark, export and delete data |
 
-To learn more about Next.js, take a look at the following resources:
+Press **Ctrl K** (or **Cmd K**) anywhere for "Have I eaten here?".
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Where things live
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `src/lib/` holds the logic, with no screen code: types, Vietnamese text
+  matching (`text.ts`), share-link reading (`links.ts`), dish types and taste
+  descriptors (`dishTypes.ts`), taste profile maths (`taste.ts`), the saved-data
+  store (`store.ts`) and translations (`i18n.ts`).
+- `src/components/` holds shared interface pieces (sidebar, quick search,
+  logging panel, place panel, map).
+- `src/app/` holds one folder per page.
 
-## Deploy on Vercel
+## Safety notes for this prototype
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Pasted links are only recognised from a fixed list of hosts (`links.ts`).
+  Anything else is ignored and never stored. Short links are not followed,
+  because that needs a server that fetches URLs and must be built with care.
+- Data read back from browser storage is checked against a schema before use.
+- Map tiles come from OpenStreetMap's public servers, which are for light use
+  only. Set `NEXT_PUBLIC_MAP_STYLE_URL` to a Goong or MapTiler style before any
+  public launch.
+- Location is read only when "My location" is pressed and is never saved.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Not built yet
+
+Login (Google, phone, Zalo), the server database with per-user access rules,
+sharing, taste twins and suggestions. See the product plan for the phases.

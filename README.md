@@ -70,8 +70,8 @@ Press **Ctrl K** (or **Cmd K**) anywhere for "Have I eaten here?".
   is meant to be public. The secret / `service_role` key must never be added to
   this project.
 - An account's diary is never written to browser storage; only the demo diary is.
-- Sign-in is by email link today. Google sign-in appears once it is switched on
-  in Supabase and `NEXT_PUBLIC_AUTH_GOOGLE=1` is set.
+- Sign-in is by email link, plus Google once it is switched on in the Supabase
+  dashboard (the app detects this by itself; there is nothing to set here).
 
 ## Not built yet
 

@@ -30,4 +30,18 @@ export function takeAuthError(): boolean {
   return failed || stale;
 }
 
-export const googleEnabled = process.env.NEXT_PUBLIC_AUTH_GOOGLE === "1";
+/**
+ * Asks Supabase whether Google sign-in is switched on for this project, so the
+ * button appears as soon as it is enabled in the Supabase dashboard.
+ */
+export async function isGoogleEnabled(): Promise<boolean> {
+  if (!url || !key) return false;
+  try {
+    const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } });
+    if (!res.ok) return false;
+    const settings: unknown = await res.json();
+    return (settings as { external?: { google?: unknown } })?.external?.google === true;
+  } catch {
+    return false;
+  }
+}

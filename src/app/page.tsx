@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BookOpen, Columns3, Plus, Table2, Trash2 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import { formatDate, useT, type Key } from "@/lib/i18n";
 import { descriptorsFor, getDishType } from "@/lib/dishTypes";
 import { sortLogs } from "@/lib/derive";
@@ -20,6 +21,8 @@ export default function DiaryPage() {
   const setPeek = useStore((s) => s.setPeek);
   const deleteLog = useStore((s) => s.deleteLog);
   const clearSamples = useStore((s) => s.clearSamples);
+  const userId = useStore((s) => s.userId);
+  const setAuthOpen = useStore((s) => s.setAuthOpen);
 
   const [view, setView] = useState<"table" | "board">("table");
   const [verdict, setVerdict] = useState<Verdict | "all">("all");
@@ -58,10 +61,13 @@ export default function DiaryPage() {
       <PageHeader icon={<BookOpen size={24} />} title={t("diaryTitle")} sub={t("diarySub")}
         actions={<Button variant="primary" onClick={() => openLog()}><Plus size={16} />{t("logMeal")}</Button>} />
 
-      {hasSamples && (
+      {!userId && (hasSamples || supabase) && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-accent-soft px-4 py-2.5 text-sm text-accent">
-          <span>{t("sampleBanner")}</span>
-          <Button small onClick={clearSamples}>{t("clearSamples")}</Button>
+          <span>{t("demoBanner")} {hasSamples && t("demoBannerSamples")}</span>
+          <span className="flex gap-2">
+            {hasSamples && <Button small onClick={clearSamples}>{t("clearSamples")}</Button>}
+            {supabase && <Button small variant="primary" onClick={() => setAuthOpen(true)}>{t("signIn")}</Button>}
+          </span>
         </div>
       )}
 

@@ -8,6 +8,8 @@ import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 import { LogPanel } from "./LogPanel";
 import { PlacePeek } from "./PlacePeek";
+import { AuthDialog } from "./AuthDialog";
+import { supabase } from "@/lib/supabase";
 
 const noopSubscribe = () => () => {};
 
@@ -17,6 +19,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const logOpen = useStore((s) => s.logPanel.open);
   const peekId = useStore((s) => s.peekPlaceId);
   const paletteOpen = useStore((s) => s.paletteOpen);
+  const authOpen = useStore((s) => s.authOpen);
+  const authReady = useStore((s) => s.authReady);
+  const loading = useStore((s) => s.loading);
+  const syncError = useStore((s) => s.syncError);
+  const dismissSyncError = useStore((s) => s.dismissSyncError);
   const setPalette = useStore((s) => s.setPalette);
   const [navOpen, setNavOpen] = useState(false);
   // Saved data lives in the browser, so the real screen is drawn only after the page has loaded there.
@@ -41,7 +48,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [setPalette]);
 
-  if (!ready) {
+  // Follow sign-in and sign-out, including returning from a sign-in link.
+  useEffect(() => {
+    if (!supabase) return;
+    const { setSession } = useStore.getState();
+    supabase.auth.getSession().then(({ data }) => setSession(data.session?.user ?? null));
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") setSession(session?.user ?? null);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!ready || !authReady) {
     return (
       <div className="flex h-full items-center justify-center text-muted" aria-busy="true">
         {APP_NAME}
@@ -62,11 +80,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <span className="font-semibold">{APP_NAME}</span>
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+        {syncError && (
+          <div className="flex items-center justify-between gap-3 bg-danger-soft px-4 py-2 text-sm text-danger" role="alert">
+            <span>{t("syncError")}</span>
+            <button type="button" className="rounded px-2 py-0.5 font-medium hover:bg-surface" onClick={dismissSyncError}>{t("close")}</button>
+          </div>
+        )}
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          {loading ? <div className="flex h-full items-center justify-center text-muted" aria-busy="true">{t("loadingDiary")}</div> : children}
+        </main>
       </div>
       {peekId && <PlacePeek placeId={peekId} />}
       {logOpen && <LogPanel />}
       {paletteOpen && <CommandPalette />}
+      {authOpen && <AuthDialog />}
     </div>
   );
 }

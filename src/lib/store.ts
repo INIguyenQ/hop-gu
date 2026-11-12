@@ -5,37 +5,29 @@ import { persist } from "zustand/middleware";
 import { z } from "zod";
 import type { ChipValue, Dish, Lang, Listing, Log, Place, Platform, Theme, Verdict } from "./types.ts";
 import { buildSampleData } from "./seed.ts";
+import { dataSchema } from "./schemas.ts";
+import { supabase } from "./supabase.ts";
+import { createRemote } from "./remote.ts";
 
-/* ---- Shape checks for anything read back from browser storage ---- */
+/**
+ * Two modes:
+ * - Demo (signed out): the diary lives in this browser only.
+ * - Account (signed in): the diary lives in Supabase. Every change is shown
+ *   at once and saved in the background; if a save fails, the screen is
+ *   reloaded from the database so it never shows something that was not saved.
+ */
 
-const str = (max: number) => z.string().max(max);
-const listingSchema = z.object({
-  platform: z.enum(["grab", "shopeefood", "befood", "gmaps", "dinein", "other"]),
-  url: str(2000).regex(/^https:\/\//),
-});
-const placeSchema = z.object({
-  id: str(64), name: str(120), area: str(80), kind: z.enum(["shop", "street"]),
-  lat: z.number().min(-90).max(90).optional(), lng: z.number().min(-180).max(180).optional(),
-  hoursNote: str(120).optional(), listings: z.array(listingSchema).max(10),
-  wishlist: z.boolean(), wishNote: str(300).optional(), sample: z.boolean().optional(), createdAt: str(40),
-});
-const dishSchema = z.object({ id: str(64), placeId: str(64), name: str(120), typeId: str(40).nullable() });
-const logSchema = z.object({
-  id: str(64), dishId: str(64), placeId: str(64), verdict: z.enum(["love", "ok", "never"]),
-  chips: z.record(str(40), z.union([z.literal(-1), z.literal(0), z.literal(1)])),
-  tags: z.array(str(40)).max(12), note: str(1000),
-  platform: z.enum(["grab", "shopeefood", "befood", "gmaps", "dinein", "other"]),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), createdAt: str(40),
-});
-const savedSchema = z.object({
-  places: z.array(placeSchema).max(20000),
-  dishes: z.array(dishSchema).max(100000),
-  logs: z.array(logSchema).max(200000),
-  lang: z.enum(["vi", "en"]),
-  theme: z.enum(["system", "light", "dark"]),
-});
+interface Data {
+  places: Place[];
+  dishes: Dish[];
+  logs: Log[];
+}
 
-/* ---- Inputs ---- */
+const savedSchema = z.object({ lang: z.enum(["vi", "en"]), theme: z.enum(["system", "light", "dark"]), demo: dataSchema });
+/** The first prototype saved the diary at the top level. */
+const savedSchemaV1 = dataSchema.extend({ lang: z.enum(["vi", "en"]), theme: z.enum(["system", "light", "dark"]) });
+
+const remote = supabase ? createRemote(supabase) : null;
 
 export interface NewPlaceInput {
   name: string;
@@ -66,18 +58,28 @@ export interface MealInput {
   items: LogItemInput[];
 }
 
-interface State {
-  places: Place[];
-  dishes: Dish[];
-  logs: Log[];
+interface State extends Data {
   lang: Lang;
   theme: Theme;
+
+  /* account (not saved in the browser by this store) */
+  userId: string | null;
+  userEmail: string | null;
+  /** False until we know whether someone is signed in. */
+  authReady: boolean;
+  loading: boolean;
+  syncError: boolean;
+  /** The browser-only diary, set aside while an account is in use. */
+  demoBackup: Data | null;
 
   /* panels (not saved) */
   logPanel: { open: boolean; placeId?: string };
   peekPlaceId: string | null;
   paletteOpen: boolean;
+  authOpen: boolean;
 
+  setSession: (user: { id: string; email?: string | null } | null) => Promise<void>;
+  dismissSyncError: () => void;
   addPlace: (input: NewPlaceInput) => string;
   addListing: (placeId: string, listing: Listing) => void;
   setWishlist: (placeId: string, wishlist: boolean, note?: string) => void;
@@ -93,136 +95,252 @@ interface State {
   closeLog: () => void;
   setPeek: (placeId: string | null) => void;
   setPalette: (open: boolean) => void;
+  setAuthOpen: (open: boolean) => void;
 }
 
 const uid = () => crypto.randomUUID();
 const clip = (s: string, max: number) => s.trim().slice(0, max);
+const EMPTY: Data = { places: [], dishes: [], logs: [] };
 
 export const useStore = create<State>()(
   persist(
-    (set, get) => ({
-      ...buildSampleData(),
-      lang: "vi",
-      theme: "system",
-      logPanel: { open: false },
-      peekPlaceId: null,
-      paletteOpen: false,
+    (set, get) => {
+      /** Reloads the signed-in user's diary from the database. */
+      const reload = async (userId: string) => {
+        if (!remote) return;
+        const data = await remote.fetchAll();
+        if (get().userId === userId) set({ ...data, loading: false });
+      };
 
-      addPlace: (input) => {
-        const id = uid();
-        const place: Place = {
-          id,
-          name: clip(input.name, 120),
-          area: clip(input.area, 80),
-          kind: input.kind,
-          lat: input.lat,
-          lng: input.lng,
-          hoursNote: input.hoursNote ? clip(input.hoursNote, 120) : undefined,
-          listings: input.listing ? [input.listing] : [],
-          wishlist: Boolean(input.wishlist),
-          wishNote: input.wishNote ? clip(input.wishNote, 300) : undefined,
-          createdAt: new Date().toISOString(),
-        };
-        set({ places: [place, ...get().places] });
-        return id;
-      },
+      let queue: Promise<void> = Promise.resolve();
 
-      addListing: (placeId, listing) =>
-        set({
-          places: get().places.map((p) =>
-            p.id === placeId && !p.listings.some((l) => l.url === listing.url) && p.listings.length < 10
-              ? { ...p, listings: [...p.listings, listing] }
-              : p,
-          ),
-        }),
-
-      setWishlist: (placeId, wishlist, note) =>
-        set({
-          places: get().places.map((p) =>
-            p.id === placeId ? { ...p, wishlist, wishNote: note !== undefined ? clip(note, 300) : p.wishNote } : p,
-          ),
-        }),
-
-      deletePlace: (placeId) =>
-        set({
-          places: get().places.filter((p) => p.id !== placeId),
-          dishes: get().dishes.filter((d) => d.placeId !== placeId),
-          logs: get().logs.filter((l) => l.placeId !== placeId),
-          peekPlaceId: get().peekPlaceId === placeId ? null : get().peekPlaceId,
-        }),
-
-      addMeal: (meal) => {
-        const dishes = [...get().dishes];
-        const logs = [...get().logs];
-        const now = Date.now();
-        meal.items.forEach((item, i) => {
-          const name = clip(item.name, 120);
-          if (!name) return;
-          let dish = item.dishId ? dishes.find((d) => d.id === item.dishId && d.placeId === meal.placeId) : undefined;
-          dish ??= dishes.find((d) => d.placeId === meal.placeId && d.name.toLowerCase() === name.toLowerCase());
-          if (!dish) {
-            dish = { id: uid(), placeId: meal.placeId, name, typeId: item.typeId };
-            dishes.push(dish);
-          } else if (!dish.typeId && item.typeId) {
-            dish.typeId = item.typeId;
-          }
-          logs.push({
-            id: uid(),
-            dishId: dish.id,
-            placeId: meal.placeId,
-            verdict: item.verdict,
-            chips: item.chips,
-            tags: item.tags.slice(0, 12),
-            note: i === 0 ? clip(meal.note, 1000) : "",
-            platform: meal.platform,
-            date: meal.date,
-            createdAt: new Date(now + i).toISOString(),
+      /** Saves a change in the background when signed in. */
+      const push = (save: (r: NonNullable<typeof remote>) => Promise<void>) => {
+        const userId = get().userId;
+        if (!remote || !userId) return;
+        // Saves run one after another, in the order the changes were made:
+        // a dish must not reach the database before the place it belongs to.
+        queue = queue
+          .then(() => save(remote))
+          .catch(async (error) => {
+            console.error("Saving failed", error);
+            set({ syncError: true });
+            await reload(userId).catch(() => undefined);
           });
-        });
-        // Trying a wishlist place takes it off the wishlist.
-        const places = get().places.map((p) => (p.id === meal.placeId && p.wishlist ? { ...p, wishlist: false } : p));
-        set({ dishes, logs, places });
-      },
+      };
 
-      deleteLog: (logId) => set({ logs: get().logs.filter((l) => l.id !== logId) }),
-
-      clearSamples: () => {
-        const sampleIds = new Set(get().places.filter((p) => p.sample).map((p) => p.id));
+      const updatePlace = (placeId: string, change: (p: Place) => Place) => {
+        let changed: Place | undefined;
         set({
-          places: get().places.filter((p) => !sampleIds.has(p.id)),
-          dishes: get().dishes.filter((d) => !sampleIds.has(d.placeId)),
-          logs: get().logs.filter((l) => !sampleIds.has(l.placeId)),
-          peekPlaceId: null,
+          places: get().places.map((p) => {
+            if (p.id !== placeId) return p;
+            changed = change(p);
+            return changed;
+          }),
         });
-      },
+        if (changed) {
+          const place = changed;
+          push((r) => r.updatePlace(place));
+        }
+      };
 
-      clearAll: () => set({ places: [], dishes: [], logs: [], peekPlaceId: null }),
+      return {
+        ...buildSampleData(),
+        lang: "vi",
+        theme: "system",
+        userId: null,
+        userEmail: null,
+        authReady: !supabase,
+        loading: false,
+        syncError: false,
+        demoBackup: null,
+        logPanel: { open: false },
+        peekPlaceId: null,
+        paletteOpen: false,
+        authOpen: false,
 
-      loadSamples: () => {
-        const s = buildSampleData();
-        const have = new Set(get().places.map((p) => p.id));
-        if (s.places.some((p) => have.has(p.id))) return;
-        set({ places: [...get().places, ...s.places], dishes: [...get().dishes, ...s.dishes], logs: [...get().logs, ...s.logs] });
-      },
+        setSession: async (user) => {
+          const current = get().userId;
+          if (user && user.id !== current) {
+            const { places, dishes, logs } = get();
+            set({
+              demoBackup: current ? get().demoBackup : { places, dishes, logs },
+              ...EMPTY,
+              userId: user.id,
+              userEmail: user.email ?? null,
+              authReady: true,
+              loading: true,
+              syncError: false,
+              peekPlaceId: null,
+              authOpen: false,
+            });
+            try {
+              await reload(user.id);
+            } catch (error) {
+              console.error("Loading failed", error);
+              if (get().userId === user.id) set({ loading: false, syncError: true });
+            }
+          } else if (!user && current) {
+            set({ ...(get().demoBackup ?? EMPTY), demoBackup: null, userId: null, userEmail: null, authReady: true, loading: false, syncError: false, peekPlaceId: null });
+          } else {
+            set({ authReady: true });
+          }
+        },
 
-      setLang: (lang) => set({ lang }),
-      setTheme: (theme) => set({ theme }),
-      openLog: (placeId) => set({ logPanel: { open: true, placeId }, paletteOpen: false }),
-      closeLog: () => set({ logPanel: { open: false } }),
-      setPeek: (peekPlaceId) => set({ peekPlaceId, paletteOpen: false }),
-      setPalette: (paletteOpen) => set({ paletteOpen }),
-    }),
+        dismissSyncError: () => set({ syncError: false }),
+
+        addPlace: (input) => {
+          const place: Place = {
+            id: uid(),
+            name: clip(input.name, 120),
+            area: clip(input.area, 80),
+            kind: input.kind,
+            lat: input.lat,
+            lng: input.lng,
+            hoursNote: input.hoursNote ? clip(input.hoursNote, 120) : undefined,
+            listings: input.listing ? [input.listing] : [],
+            wishlist: Boolean(input.wishlist),
+            wishNote: input.wishNote ? clip(input.wishNote, 300) : undefined,
+            createdAt: new Date().toISOString(),
+          };
+          set({ places: [place, ...get().places] });
+          push((r) => r.insertPlace(place));
+          return place.id;
+        },
+
+        addListing: (placeId, listing) =>
+          updatePlace(placeId, (p) =>
+            p.listings.some((l) => l.url === listing.url) || p.listings.length >= 10 ? p : { ...p, listings: [...p.listings, listing] },
+          ),
+
+        setWishlist: (placeId, wishlist, note) =>
+          updatePlace(placeId, (p) => ({ ...p, wishlist, wishNote: note !== undefined ? clip(note, 300) : p.wishNote })),
+
+        deletePlace: (placeId) => {
+          set({
+            places: get().places.filter((p) => p.id !== placeId),
+            dishes: get().dishes.filter((d) => d.placeId !== placeId),
+            logs: get().logs.filter((l) => l.placeId !== placeId),
+            peekPlaceId: get().peekPlaceId === placeId ? null : get().peekPlaceId,
+          });
+          push((r) => r.deletePlace(placeId));
+        },
+
+        addMeal: (meal) => {
+          const dishes = [...get().dishes];
+          const newDishes: Dish[] = [];
+          const changedDishes: Dish[] = [];
+          const newLogs: Log[] = [];
+          const now = Date.now();
+          meal.items.forEach((item, i) => {
+            const name = clip(item.name, 120);
+            if (!name) return;
+            let index = item.dishId ? dishes.findIndex((d) => d.id === item.dishId && d.placeId === meal.placeId) : -1;
+            if (index < 0) index = dishes.findIndex((d) => d.placeId === meal.placeId && d.name.toLowerCase() === name.toLowerCase());
+            let dish: Dish;
+            if (index < 0) {
+              dish = { id: uid(), placeId: meal.placeId, name, typeId: item.typeId };
+              dishes.push(dish);
+              newDishes.push(dish);
+            } else if (!dishes[index].typeId && item.typeId) {
+              dish = { ...dishes[index], typeId: item.typeId };
+              dishes[index] = dish;
+              if (!newDishes.some((d) => d.id === dish.id)) changedDishes.push(dish);
+            } else {
+              dish = dishes[index];
+            }
+            newLogs.push({
+              id: uid(),
+              dishId: dish.id,
+              placeId: meal.placeId,
+              verdict: item.verdict,
+              chips: item.chips,
+              tags: item.tags.slice(0, 12),
+              note: i === 0 ? clip(meal.note, 1000) : "",
+              platform: meal.platform,
+              date: meal.date,
+              createdAt: new Date(now + i).toISOString(),
+            });
+          });
+          set({ dishes, logs: [...get().logs, ...newLogs] });
+          push((r) => r.saveMeal(newDishes, changedDishes, newLogs));
+          // Trying a wishlist place takes it off the wishlist.
+          if (get().places.some((p) => p.id === meal.placeId && p.wishlist)) updatePlace(meal.placeId, (p) => ({ ...p, wishlist: false }));
+        },
+
+        deleteLog: (logId) => {
+          set({ logs: get().logs.filter((l) => l.id !== logId) });
+          push((r) => r.deleteLog(logId));
+        },
+
+        // Sample entries exist only in demo mode.
+        clearSamples: () => {
+          if (get().userId) return;
+          const sampleIds = new Set(get().places.filter((p) => p.sample).map((p) => p.id));
+          set({
+            places: get().places.filter((p) => !sampleIds.has(p.id)),
+            dishes: get().dishes.filter((d) => !sampleIds.has(d.placeId)),
+            logs: get().logs.filter((l) => !sampleIds.has(l.placeId)),
+            peekPlaceId: null,
+          });
+        },
+
+        clearAll: () => {
+          const userId = get().userId;
+          set({ ...EMPTY, peekPlaceId: null });
+          if (userId) push((r) => r.deleteEverything(userId));
+        },
+
+        loadSamples: () => {
+          if (get().userId) return;
+          const s = buildSampleData();
+          const have = new Set(get().places.map((p) => p.id));
+          if (s.places.some((p) => have.has(p.id))) return;
+          set({ places: [...get().places, ...s.places], dishes: [...get().dishes, ...s.dishes], logs: [...get().logs, ...s.logs] });
+        },
+
+        setLang: (lang) => set({ lang }),
+        setTheme: (theme) => set({ theme }),
+        openLog: (placeId) => set({ logPanel: { open: true, placeId }, paletteOpen: false }),
+        closeLog: () => set({ logPanel: { open: false } }),
+        setPeek: (peekPlaceId) => set({ peekPlaceId, paletteOpen: false }),
+        setPalette: (paletteOpen) => set({ paletteOpen }),
+        setAuthOpen: (authOpen) => set({ authOpen }),
+      };
+    },
     {
-      name: "hop-gu-diary-v1",
-      partialize: (s) => ({ places: s.places, dishes: s.dishes, logs: s.logs, lang: s.lang, theme: s.theme }),
+      name: "hop-gu-diary-v2",
+      // Only the demo diary is kept in browser storage. An account's diary is never written there.
+      partialize: (s) => ({
+        lang: s.lang,
+        theme: s.theme,
+        demo: s.userId ? (s.demoBackup ?? EMPTY) : { places: s.places, dishes: s.dishes, logs: s.logs },
+      }),
       // Saved data that does not pass the shape check is ignored instead of trusted.
       merge: (saved, current) => {
         const parsed = savedSchema.safeParse(saved);
-        return parsed.success ? { ...current, ...parsed.data } : current;
+        return parsed.success ? { ...current, lang: parsed.data.lang, theme: parsed.data.theme, ...parsed.data.demo } : current;
       },
     },
   ),
 );
+
+/** One-time carry-over of a diary saved by the first prototype. */
+if (typeof window !== "undefined") {
+  try {
+    const old = window.localStorage.getItem("hop-gu-diary-v1");
+    if (old && !window.localStorage.getItem("hop-gu-diary-v2")) {
+      const parsed = savedSchemaV1.safeParse(JSON.parse(old)?.state);
+      if (parsed.success) {
+        const { lang, theme, ...demo } = parsed.data;
+        useStore.setState({ lang, theme, ...demo });
+      }
+    }
+    window.localStorage.removeItem("hop-gu-diary-v1");
+  } catch {
+    /* storage unavailable: carry on with defaults */
+  }
+}
 
 export function exportData(): string {
   const { places, dishes, logs } = useStore.getState();

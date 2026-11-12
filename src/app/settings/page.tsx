@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, Monitor, Moon, Settings, Sun, Trash2 } from "lucide-react";
+import { Download, LogIn, LogOut, Monitor, Moon, Settings, Sun, Trash2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { exportData, useStore } from "@/lib/store";
 import { useT, type Key } from "@/lib/i18n";
 import type { Lang, Theme } from "@/lib/types";
@@ -25,6 +26,9 @@ export default function SettingsPage() {
   const setTheme = useStore((s) => s.setTheme);
   const clearAll = useStore((s) => s.clearAll);
   const loadSamples = useStore((s) => s.loadSamples);
+  const userId = useStore((s) => s.userId);
+  const userEmail = useStore((s) => s.userEmail);
+  const setAuthOpen = useStore((s) => s.setAuthOpen);
 
   const download = () => {
     const url = URL.createObjectURL(new Blob([exportData()], { type: "application/json" }));
@@ -58,12 +62,26 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {supabase && (
+        <section className="mb-8">
+          <h2 className="mb-2 font-semibold">{t("account")}</h2>
+          {userId ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-muted">{t("signedInAs")} <span className="text-ink">{userEmail}</span></span>
+              <Button onClick={() => supabase?.auth.signOut()}><LogOut size={15} />{t("signOut")}</Button>
+            </div>
+          ) : (
+            <Button variant="primary" onClick={() => setAuthOpen(true)}><LogIn size={15} />{t("signIn")}</Button>
+          )}
+        </section>
+      )}
+
       <section>
         <h2 className="mb-1 font-semibold">{t("yourData")}</h2>
-        <p className="mb-3 max-w-xl text-sm text-muted">{t("dataNote")}</p>
+        <p className="mb-3 max-w-xl text-sm text-muted">{t(userId ? "cloudNote" : "dataNote")}</p>
         <div className="flex flex-wrap gap-2">
           <Button onClick={download}><Download size={15} />{t("exportData")}</Button>
-          <Button onClick={loadSamples}>{t("loadSamples")}</Button>
+          {!userId && <Button onClick={loadSamples}>{t("loadSamples")}</Button>}
           <Button variant="danger" onClick={() => window.confirm(t("confirmDeleteAll")) && clearAll()}><Trash2 size={15} />{t("deleteAll")}</Button>
         </div>
       </section>

@@ -4,9 +4,11 @@ A personal dish diary: remember which dishes you loved and which to never order
 again, across GrabFood, ShopeeFood, beFood and dine-in. Later phases match
 people with the same taste on specific dishes.
 
-This is the **Phase 1 web prototype**. It runs in demo mode: there is no login
-and no server database yet, and everything you enter is saved only in your own
-browser.
+This is the **Phase 1 web app**. It has two modes:
+
+- **Signed out (demo):** the diary is saved only in your own browser.
+- **Signed in:** the diary is saved in your Supabase account and only you can
+  read or change it.
 
 ## Run it
 
@@ -57,7 +59,21 @@ Press **Ctrl K** (or **Cmd K**) anywhere for "Have I eaten here?".
   public launch.
 - Location is read only when "My location" is pressed and is never saved.
 
+## Accounts and database (Supabase)
+
+- Copy `.env.example` to `.env.local` and fill in the project URL and the
+  **publishable** key. Without them the app runs in demo mode only.
+- The tables and access rules are in `supabase/migrations/`. Every table has
+  Row Level Security: a user can only see and change rows where `user_id` is
+  their own. Signed-out visitors can read nothing.
+- The app talks to Supabase from the browser with the publishable key. That key
+  is meant to be public. The secret / `service_role` key must never be added to
+  this project.
+- An account's diary is never written to browser storage; only the demo diary is.
+- Sign-in is by email link today. Google sign-in appears once it is switched on
+  in Supabase and `NEXT_PUBLIC_AUTH_GOOGLE=1` is set.
+
 ## Not built yet
 
-Login (Google, phone, Zalo), the server database with per-user access rules,
-sharing, taste twins and suggestions. See the product plan for the phases.
+Google, phone and Zalo sign-in, moving a demo diary into an account, account
+deletion, sharing, taste twins and suggestions. See the product plan.

@@ -58,10 +58,10 @@ export function Tag({ children, tone = "plain" }: { children: React.ReactNode; t
 
 type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "outline" | "danger"; small?: boolean };
 
-export function Button({ variant = "outline", small, className, ...rest }: BtnProps) {
+export function Button({ variant = "outline", small, className, type = "button", ...rest }: BtnProps) {
   return (
     <button
-      type="button"
+      type={type}
       {...rest}
       className={cx(
         "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed",

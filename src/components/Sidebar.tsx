@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Lock, MapPin, Plus, Search, Settings, Sparkles, Star, Store, Users } from "lucide-react";
+import { BookOpen, Lock, LogIn, LogOut, MapPin, Plus, Search, Settings, Sparkles, Star, Store, Users } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store";
 import { APP_NAME, useT, type Key } from "@/lib/i18n";
 import { cx } from "./ui";
@@ -32,6 +33,9 @@ export function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const openLog = useStore((s) => s.openLog);
   const setPalette = useStore((s) => s.setPalette);
   const wishCount = useStore((s) => s.places.filter((p) => p.wishlist).length);
+  const userId = useStore((s) => s.userId);
+  const userEmail = useStore((s) => s.userEmail);
+  const setAuthOpen = useStore((s) => s.setAuthOpen);
 
   const item = "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors";
 
@@ -42,7 +46,7 @@ export function Sidebar({ onNavigate }: { onNavigate: () => void }) {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 font-semibold leading-tight">
             {APP_NAME}
-            <span className="rounded bg-accent-soft px-1 text-[10px] font-medium text-accent">{t("demo")}</span>
+            {!userId && <span className="rounded bg-accent-soft px-1 text-[10px] font-medium text-accent">{t("demo")}</span>}
           </div>
           <div className="truncate text-xs text-muted">{t("tagline")}</div>
         </div>
@@ -83,7 +87,22 @@ export function Sidebar({ onNavigate }: { onNavigate: () => void }) {
         </li>
       </ul>
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-0.5">
+        {supabase && !userId && (
+          <button type="button" className={cx(item, "font-medium text-brand hover:bg-brand-soft")} onClick={() => { setAuthOpen(true); onNavigate(); }}>
+            <LogIn size={16} />
+            {t("signIn")}
+          </button>
+        )}
+        {supabase && userId && (
+          <div className="px-2.5 pb-1">
+            <div className="truncate text-xs text-muted" title={userEmail ?? ""}>{userEmail}</div>
+            <button type="button" className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink" onClick={() => supabase?.auth.signOut()}>
+              <LogOut size={14} />
+              {t("signOut")}
+            </button>
+          </div>
+        )}
         <Link href="/settings" onClick={onNavigate} aria-current={pathname === "/settings" ? "page" : undefined} className={cx(item, pathname === "/settings" ? "bg-hover font-medium text-ink" : "text-muted hover:bg-hover hover:text-ink")}>
           <Settings size={16} />
           {t("navSettings")}

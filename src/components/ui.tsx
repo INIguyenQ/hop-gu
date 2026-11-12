@@ -11,7 +11,7 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 export const VERDICT_STYLE: Record<Verdict, { text: string; soft: string; solid: string; cssVar: string }> = {
   love: { text: "text-brand", soft: "bg-brand-soft text-brand", solid: "bg-brand text-on-brand", cssVar: "var(--brand)" },
   ok: { text: "text-okay", soft: "bg-okay-soft text-okay", solid: "bg-okay-soft text-okay ring-1 ring-okay", cssVar: "var(--okay)" },
-  never: { text: "text-danger", soft: "bg-danger-soft text-danger", solid: "bg-danger text-white", cssVar: "var(--danger)" },
+  never: { text: "text-danger", soft: "bg-danger-soft text-danger", solid: "bg-danger text-on-danger", cssVar: "var(--danger)" },
 };
 
 export function VerdictIcon({ verdict, size = 14 }: { verdict: Verdict; size?: number }) {

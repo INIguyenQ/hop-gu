@@ -77,6 +77,8 @@ interface State extends Data {
   peekPlaceId: string | null;
   paletteOpen: boolean;
   authOpen: boolean;
+  /** True when the visitor arrived through a sign-in link that did not work. */
+  authLinkFailed: boolean;
 
   setSession: (user: { id: string; email?: string | null } | null) => Promise<void>;
   dismissSyncError: () => void;
@@ -158,6 +160,7 @@ export const useStore = create<State>()(
         peekPlaceId: null,
         paletteOpen: false,
         authOpen: false,
+        authLinkFailed: false,
 
         setSession: async (user) => {
           const current = get().userId;
@@ -305,7 +308,7 @@ export const useStore = create<State>()(
         closeLog: () => set({ logPanel: { open: false } }),
         setPeek: (peekPlaceId) => set({ peekPlaceId, paletteOpen: false }),
         setPalette: (paletteOpen) => set({ paletteOpen }),
-        setAuthOpen: (authOpen) => set({ authOpen }),
+        setAuthOpen: (authOpen) => set({ authOpen, authLinkFailed: false }),
       };
     },
     {

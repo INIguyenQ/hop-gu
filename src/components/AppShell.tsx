@@ -9,7 +9,7 @@ import { CommandPalette } from "./CommandPalette";
 import { LogPanel } from "./LogPanel";
 import { PlacePeek } from "./PlacePeek";
 import { AuthDialog } from "./AuthDialog";
-import { supabase } from "@/lib/supabase";
+import { supabase, takeAuthError } from "@/lib/supabase";
 
 const noopSubscribe = () => () => {};
 
@@ -52,7 +52,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!supabase) return;
     const { setSession } = useStore.getState();
-    supabase.auth.getSession().then(({ data }) => setSession(data.session?.user ?? null));
+    const db = supabase;
+    db.auth.getSession().then(({ data }) => {
+      setSession(data.session?.user ?? null);
+      // Arrived through a sign-in link that did not work: say so instead of failing silently.
+      if (takeAuthError() && !data.session) useStore.setState({ authOpen: true, authLinkFailed: true });
+    });
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") setSession(session?.user ?? null);
     });

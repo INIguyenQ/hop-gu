@@ -150,6 +150,8 @@ const D = {
   sendLink: ["Gửi link đăng nhập", "Send sign-in link"],
   linkSent: ["Đã gửi. Hãy mở email và bấm vào link để đăng nhập.", "Sent. Open the email and click the link to sign in."],
   authError: ["Không thực hiện được. Hãy thử lại sau ít phút.", "That did not work. Please try again in a few minutes."],
+  authTooMany: ["Đã gửi quá nhiều email. Hãy đợi khoảng một giờ rồi thử lại.", "Too many emails were sent. Please wait about an hour and try again."],
+  authLinkBad: ["Link đăng nhập đã hết hạn hoặc đã được dùng. Hãy yêu cầu link mới.", "That sign-in link has expired or was already used. Please request a new one."],
   account: ["Tài khoản", "Account"],
   signedInAs: ["Đang đăng nhập:", "Signed in as"],
   demoBanner: ["Bạn đang dùng thử: dữ liệu chỉ lưu trên trình duyệt này.", "You are trying the demo: data is saved only in this browser."],

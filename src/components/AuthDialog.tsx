@@ -13,7 +13,8 @@ export function AuthDialog() {
   const { t } = useT();
   const setAuthOpen = useStore((s) => s.setAuthOpen);
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "busy" | "sent" | "error">("idle");
+  const linkFailed = useStore((s) => s.authLinkFailed);
+  const [state, setState] = useState<"idle" | "busy" | "sent" | "error" | "tooMany">("idle");
 
   if (!supabase) return null;
   const db = supabase;
@@ -29,7 +30,7 @@ export function AuthDialog() {
     e.preventDefault();
     setState("busy");
     const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: backHere() } });
-    setState(error ? "error" : "sent");
+    setState(!error ? "sent" : error.status === 429 ? "tooMany" : "error");
   };
 
   return (
@@ -62,6 +63,8 @@ export function AuthDialog() {
           </form>
         )}
         {state === "error" && <p className="mt-3 text-sm text-danger" role="alert">{t("authError")}</p>}
+        {state === "tooMany" && <p className="mt-3 text-sm text-danger" role="alert">{t("authTooMany")}</p>}
+        {linkFailed && state === "idle" && <p className="mt-3 text-sm text-danger" role="alert">{t("authLinkBad")}</p>}
       </div>
     </div>
   );

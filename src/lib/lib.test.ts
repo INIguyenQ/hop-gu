@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeVi, matchesQuery, distanceMeters } from "./text.ts";
 import { parseShareLink, looksLikeUrl } from "./links.ts";
+import { acceptableUrl, decodeEntities, extractTitle, resolveShareLink } from "./linkResolver.ts";
 import { guessDishType, DISH_TYPES } from "./dishTypes.ts";
 import { computeTaste } from "./taste.ts";
 import { summarizePlace } from "./derive.ts";
@@ -37,6 +38,61 @@ test("parseShareLink reads Grab and ShopeeFood links", () => {
   const s = parseShareLink("https://shopeefood.vn/ho-chi-minh/bun-bo-o-xuan");
   assert.equal(s?.platform, "shopeefood");
   assert.equal(s?.name, "Bun Bo O Xuan");
+});
+
+test("parseShareLink handles the links the ShopeeFood app really copies", () => {
+  const short = parseShareLink("https://shopeefood.vn/u/Ni5oTmf");
+  assert.deepEqual([short?.platform, short?.name, short?.short, short?.resolvable, short?.url], ["shopeefood", undefined, true, true, "https://shopeefood.vn/u/Ni5oTmf"]);
+  // The long form carries only a number: it must not become the place name, and tracking is dropped.
+  const full = parseShareLink("https://shopeefood.vn/now-food/shop/1263913?shareChannel=copy_link&stm_medium=referral&stm_source=rw&uls_trackid=5743lmvn01lu");
+  assert.deepEqual([full?.name, full?.short, full?.resolvable, full?.url], [undefined, true, undefined, "https://shopeefood.vn/now-food/shop/1263913"]);
+});
+
+test("link resolver only opens ShopeeFood short links", () => {
+  assert.equal(acceptableUrl("https://shopeefood.vn/u/Ni5oTmf?x=1#y"), "https://shopeefood.vn/u/Ni5oTmf");
+  for (const bad of [
+    "http://shopeefood.vn/u/Ni5oTmf", "https://shopeefood.vn/now-food/shop/1", "https://shopeefood.vn/u/../admin", "https://shopeefood.vn/u/a%2Fb",
+    "https://shopeefood.vn.evil.io/u/Ni5oTmf", "https://evil.io/u/Ni5oTmf", "https://shopeefood.vn:8443/u/Ni5oTmf", "https://a:b@shopeefood.vn/u/Ni5oTmf",
+    "https://127.0.0.1/u/Ni5oTmf", "https://169.254.169.254/u/abcd", "file:///etc/passwd", "not a url",
+  ]) assert.equal(acceptableUrl(bad), null, bad);
+});
+
+test("link resolver reads and cleans the page title", async () => {
+  const page = '<html><head><title>x</title><meta property="og:title" content="Nui X&agrave;o B&#242;, M&#xEC; &amp; C&#417;m &lt;b&gt;L&uacute;c"></head></html>';
+  assert.equal(extractTitle(page), "Nui X&agrave;o Bò, Mì & Cơm b L&uacute;c");
+  assert.equal(extractTitle("<title>  Quán   Cô Ba\n</title>"), "Quán Cô Ba");
+  assert.equal(extractTitle("<p>nothing</p>"), null);
+  assert.equal(decodeEntities("A &amp; B &#39;c&#x27; &bogus;"), "A & B 'c' &bogus;");
+
+  const calls: string[] = [];
+  const ok = await resolveShareLink("https://shopeefood.vn/u/Abcd1", async (url) => {
+    calls.push(url);
+    return new Response('<meta property="og:title" content="Quán Thử">', { status: 200 });
+  });
+  assert.deepEqual([ok, calls], [{ ok: true, name: "Quán Thử" }, ["https://shopeefood.vn/u/Abcd1"]]);
+
+  // A redirect to another site is never followed.
+  const hops: string[] = [];
+  const away = await resolveShareLink("https://shopeefood.vn/u/Abcd1", async (url) => {
+    hops.push(url);
+    return new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data" } });
+  });
+  assert.deepEqual([away, hops.length], [{ ok: false, reason: "no_name" }, 1]);
+
+  // Redirect loops stop after a few hops.
+  let n = 0;
+  const loop = await resolveShareLink("https://shopeefood.vn/u/Abcd1", async () => {
+    n++;
+    return new Response(null, { status: 302, headers: { location: "/u/Abcd2" } });
+  });
+  assert.deepEqual([loop.ok, n], [false, 3]);
+
+  // Only the first 64 KB of a reply is read.
+  const huge = await resolveShareLink("https://shopeefood.vn/u/Abcd1", async () => new Response("x".repeat(200_000) + '<meta property="og:title" content="late">', { status: 200 }));
+  assert.deepEqual(huge, { ok: false, reason: "no_name" });
+
+  assert.deepEqual(await resolveShareLink("https://evil.io/u/Abcd1", async () => { throw new Error("must not be called"); }), { ok: false, reason: "unsupported" });
+  assert.deepEqual(await resolveShareLink("https://shopeefood.vn/u/Abcd1", async () => { throw new Error("network down"); }), { ok: false, reason: "unreachable" });
 });
 
 test("parseShareLink flags short links and rejects unknown or unsafe ones", () => {

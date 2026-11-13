@@ -10,6 +10,8 @@ export interface ParsedLink {
   lng?: number;
   /** Short links hide the place details; the user must type the name. */
   short: boolean;
+  /** Our server can open this link to read the place name (see linkResolver.ts). */
+  resolvable?: boolean;
 }
 
 /**
@@ -25,6 +27,11 @@ const HOSTS: { test: (host: string) => boolean; platform: Platform; short?: bool
   { test: (h) => h === "shopeefood.vn" || h === "www.shopeefood.vn", platform: "shopeefood" },
   { test: (h) => h === "be.com.vn" || h.endsWith(".be.com.vn"), platform: "befood", short: true },
 ];
+
+/** The short share link the ShopeeFood app copies: /u/ followed by a short code. */
+export function isShopeeFoodShortPath(pathname: string): boolean {
+  return /^\/u\/[A-Za-z0-9]{4,24}$/.test(pathname);
+}
 
 export function looksLikeUrl(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim());
@@ -84,10 +91,21 @@ export function parseShareLink(raw: string): ParsedLink | null {
   }
 
   if (match.platform === "shopeefood") {
-    // shopeefood.vn/<city>/<restaurant-slug>
-    const slug = parts.length >= 2 && parts[0] !== "u" ? parts[parts.length - 1] : undefined;
-    if (slug) result.name = humanizeSlug(slug).slice(0, 120);
-    else result.short = true;
+    // Tracking details in the address are dropped; only the path is kept.
+    result.url = `https://${host}${url.pathname}`.slice(0, 2000);
+    if (isShopeeFoodShortPath(url.pathname)) {
+      // shopeefood.vn/u/<code>: the name is on the page behind the link.
+      result.short = true;
+      result.resolvable = true;
+    } else if (parts[0] === "now-food" || /^\d+$/.test(parts[parts.length - 1] ?? "")) {
+      // shopeefood.vn/now-food/shop/<number>: only an ID, no name anywhere.
+      result.short = true;
+    } else if (parts.length >= 2) {
+      // shopeefood.vn/<city>/<restaurant-slug>
+      result.name = humanizeSlug(parts[parts.length - 1]).slice(0, 120);
+    } else {
+      result.short = true;
+    }
   }
 
   return result;

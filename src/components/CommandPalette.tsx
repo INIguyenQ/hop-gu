@@ -32,7 +32,7 @@ export function CommandPalette() {
 
   const results = useMemo<Result[]>(() => {
     const q = query.trim();
-    const placeHits = places.filter((p) => !q || matchesQuery(`${p.name} ${p.area}`, q)).slice(0, q ? 6 : 5);
+    const placeHits = places.filter((p) => !q || matchesQuery(`${p.name} ${p.area} ${p.address ?? ""}`, q)).slice(0, q ? 6 : 5);
     const out: Result[] = placeHits.map((p) => ({ kind: "place", id: `p-${p.id}`, placeId: p.id, title: p.name, sub: p.area }));
     if (q) {
       for (const d of dishes) {

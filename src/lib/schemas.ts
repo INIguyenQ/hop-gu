@@ -8,6 +8,7 @@ export const listingSchema = z.object({ platform, url: str(2000).regex(/^https:\
 
 export const placeSchema = z.object({
   id: str(64), name: str(120), area: str(80), kind: z.enum(["shop", "street"]),
+  address: str(200).optional(), visibility: z.enum(["shared", "private"]).optional(), createdBy: str(64).nullable().optional(),
   lat: z.number().min(-90).max(90).optional(), lng: z.number().min(-180).max(180).optional(),
   hoursNote: str(120).optional(), listings: z.array(listingSchema).max(10),
   wishlist: z.boolean(), wishNote: str(300).optional(), sample: z.boolean().optional(), createdAt: str(40),

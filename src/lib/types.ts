@@ -20,7 +20,13 @@ export interface Place {
   id: string;
   name: string;
   area: string;
+  /** Street address, as the user typed it. */
+  address?: string;
   kind: "shop" | "street";
+  /** "shared": other signed-in users can find it. "private": only its creator. */
+  visibility?: "shared" | "private";
+  /** The account that added it; null once that account has left. */
+  createdBy?: string | null;
   lat?: number;
   lng?: number;
   hoursNote?: string;

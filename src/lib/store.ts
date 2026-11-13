@@ -7,7 +7,7 @@ import type { ChipValue, Dish, Lang, Listing, Log, Place, Platform, Theme, Verdi
 import { buildSampleData } from "./seed.ts";
 import { dataSchema } from "./schemas.ts";
 import { supabase } from "./supabase.ts";
-import { createRemote } from "./remote.ts";
+import { createRemote, type ReportReason } from "./remote.ts";
 
 /**
  * Two modes:
@@ -32,7 +32,10 @@ const remote = supabase ? createRemote(supabase) : null;
 export interface NewPlaceInput {
   name: string;
   area: string;
+  address?: string;
   kind: "shop" | "street";
+  /** Only meaningful when signed in. Defaults to shared. */
+  visibility?: "shared" | "private";
   lat?: number;
   lng?: number;
   hoursNote?: string;
@@ -85,7 +88,13 @@ interface State extends Data {
   addPlace: (input: NewPlaceInput) => string;
   addListing: (placeId: string, listing: Listing) => void;
   setWishlist: (placeId: string, wishlist: boolean, note?: string) => void;
+  /** Removes a place from my diary (my logs and wishlist entry for it). */
   deletePlace: (placeId: string) => void;
+  /** Looks for shared places matching a name or address, and ones pinned near a point. */
+  findShared: (query: string, near?: { lat: number; lng: number } | null) => Promise<Place[]>;
+  /** Brings a shared place found by search into view so it can be logged or wishlisted. */
+  adoptPlace: (place: Place) => void;
+  reportPlace: (placeId: string, reason: ReportReason) => Promise<boolean>;
   addMeal: (meal: MealInput) => void;
   deleteLog: (logId: string) => void;
   clearSamples: () => void;
@@ -110,7 +119,7 @@ export const useStore = create<State>()(
       /** Reloads the signed-in user's diary from the database. */
       const reload = async (userId: string) => {
         if (!remote) return;
-        const data = await remote.fetchAll();
+        const data = await remote.fetchAll(userId);
         if (get().userId === userId) set({ ...data, loading: false });
       };
 
@@ -197,7 +206,10 @@ export const useStore = create<State>()(
             id: uid(),
             name: clip(input.name, 120),
             area: clip(input.area, 80),
+            address: input.address ? clip(input.address, 200) : undefined,
             kind: input.kind,
+            visibility: get().userId ? (input.visibility ?? "shared") : undefined,
+            createdBy: get().userId ?? undefined,
             lat: input.lat,
             lng: input.lng,
             hoursNote: input.hoursNote ? clip(input.hoursNote, 120) : undefined,
@@ -208,16 +220,32 @@ export const useStore = create<State>()(
           };
           set({ places: [place, ...get().places] });
           push((r) => r.insertPlace(place));
+          if (place.wishlist) push((r) => r.setWishlist(place.id, true, place.wishNote ?? ""));
           return place.id;
         },
 
-        addListing: (placeId, listing) =>
+        // Links are part of the shared place, so only its creator can add one (anyone can in demo mode).
+        addListing: (placeId, listing) => {
+          const userId = get().userId;
+          const place = get().places.find((p) => p.id === placeId);
+          if (!place || (userId && place.createdBy !== userId)) return;
           updatePlace(placeId, (p) =>
             p.listings.some((l) => l.url === listing.url) || p.listings.length >= 10 ? p : { ...p, listings: [...p.listings, listing] },
-          ),
+          );
+        },
 
-        setWishlist: (placeId, wishlist, note) =>
-          updatePlace(placeId, (p) => ({ ...p, wishlist, wishNote: note !== undefined ? clip(note, 300) : p.wishNote })),
+        setWishlist: (placeId, wishlist, note) => {
+          let saved: Place | undefined;
+          set({
+            places: get().places.map((p) => {
+              if (p.id !== placeId) return p;
+              saved = { ...p, wishlist, wishNote: note !== undefined ? clip(note, 300) : p.wishNote };
+              return saved;
+            }),
+          });
+          const wishNote = saved?.wishNote ?? "";
+          if (saved) push((r) => r.setWishlist(placeId, wishlist, wishNote));
+        },
 
         deletePlace: (placeId) => {
           set({
@@ -226,7 +254,48 @@ export const useStore = create<State>()(
             logs: get().logs.filter((l) => l.placeId !== placeId),
             peekPlaceId: get().peekPlaceId === placeId ? null : get().peekPlaceId,
           });
-          push((r) => r.deletePlace(placeId));
+          push((r) => r.removeFromDiary(placeId));
+        },
+
+        findShared: async (query, near) => {
+          if (!remote || !get().userId) return [];
+          try {
+            const [byName, byPin] = await Promise.all([
+              query.trim().length >= 2 ? remote.searchPlaces(query) : Promise.resolve([]),
+              near ? remote.nearbyPlaces(near.lat, near.lng) : Promise.resolve([]),
+            ]);
+            const seen = new Set<string>();
+            return [...byName, ...byPin].filter((p) => !seen.has(p.id) && seen.add(p.id));
+          } catch (error) {
+            console.error("Search failed", error);
+            return [];
+          }
+        },
+
+        adoptPlace: (place) => {
+          if (get().places.some((p) => p.id === place.id)) return;
+          set({ places: [place, ...get().places] });
+          const userId = get().userId;
+          if (!remote || !userId) return;
+          remote
+            .fetchDishes(place.id)
+            .then((found) => {
+              if (get().userId !== userId) return;
+              const have = new Set(get().dishes.map((d) => d.id));
+              set({ dishes: [...get().dishes, ...found.filter((d) => !have.has(d.id))] });
+            })
+            .catch((error) => console.error("Loading dishes failed", error));
+        },
+
+        reportPlace: async (placeId, reason) => {
+          if (!remote || !get().userId) return false;
+          try {
+            await remote.reportPlace(placeId, reason);
+            return true;
+          } catch (error) {
+            console.error("Report failed", error);
+            return false;
+          }
         },
 
         addMeal: (meal) => {
@@ -266,9 +335,19 @@ export const useStore = create<State>()(
             });
           });
           set({ dishes, logs: [...get().logs, ...newLogs] });
-          push((r) => r.saveMeal(newDishes, changedDishes, newLogs));
+          const userId = get().userId;
+          push(async (r) => {
+            const saved = await r.saveMeal(meal.placeId, newDishes, newLogs);
+            for (const d of changedDishes) if (d.typeId) await r.setDishType(d.id, d.typeId);
+            if (get().userId !== userId) return;
+            // Someone else may already have added a dish with this name: use the shared entry.
+            set({
+              dishes: [...get().dishes.filter((d) => d.placeId !== meal.placeId), ...saved.dishes],
+              logs: get().logs.map((l) => (saved.idMap.has(l.dishId) ? { ...l, dishId: saved.idMap.get(l.dishId)! } : l)),
+            });
+          });
           // Trying a wishlist place takes it off the wishlist.
-          if (get().places.some((p) => p.id === meal.placeId && p.wishlist)) updatePlace(meal.placeId, (p) => ({ ...p, wishlist: false }));
+          if (get().places.some((p) => p.id === meal.placeId && p.wishlist)) get().setWishlist(meal.placeId, false);
         },
 
         deleteLog: (logId) => {
@@ -291,7 +370,7 @@ export const useStore = create<State>()(
         clearAll: () => {
           const userId = get().userId;
           set({ ...EMPTY, peekPlaceId: null });
-          if (userId) push((r) => r.deleteEverything(userId));
+          if (userId) push((r) => r.deleteEverything());
         },
 
         loadSamples: () => {

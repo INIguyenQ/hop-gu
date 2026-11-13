@@ -1,6 +1,8 @@
 "use client";
 
-import { ExternalLink, MapPin, Navigation, Plus, Star, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Flag, MapPin, Navigation, Plus, Star, Trash2 } from "lucide-react";
+import type { ReportReason } from "@/lib/remote";
 import { useStore } from "@/lib/store";
 import { formatDate, useT, type Key } from "@/lib/i18n";
 import { getDishType } from "@/lib/dishTypes";
@@ -18,13 +20,17 @@ export function PlacePeek({ placeId }: { placeId: string }) {
   const setWishlist = useStore((s) => s.setWishlist);
   const deletePlace = useStore((s) => s.deletePlace);
   const deleteLog = useStore((s) => s.deleteLog);
+  const userId = useStore((s) => s.userId);
+  const reportPlace = useStore((s) => s.reportPlace);
+  const [reported, setReported] = useState(false);
 
   const place = placeById(places, placeId);
   if (!place) return null;
 
-  const placeDishes = dishes.filter((d) => d.placeId === place.id);
   const placeLogs = sortLogs(logs.filter((l) => l.placeId === place.id));
   const verdicts = latestVerdictByDish(placeLogs);
+  // A shared place also carries dish names other people added; the diary shows only the ones I have logged.
+  const placeDishes = dishes.filter((d) => d.placeId === place.id && verdicts.has(d.id));
   const summary = summarizePlace(place.id, dishes, logs);
   const hasPin = place.lat !== undefined && place.lng !== undefined;
 
@@ -34,8 +40,9 @@ export function PlacePeek({ placeId }: { placeId: string }) {
         <div className="min-w-0 flex-1">
           <h3 className="text-2xl font-bold leading-tight">{place.name}</h3>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted">
-            {place.area && <span className="inline-flex items-center gap-1"><MapPin size={13} />{place.area}</span>}
+            {(place.address || place.area) && <span className="inline-flex items-center gap-1"><MapPin size={13} className="shrink-0" />{[place.address, place.area].filter(Boolean).join(", ")}</span>}
             <Tag>{t(place.kind === "shop" ? "kindShop" : "kindStreet")}</Tag>
+            {userId && place.visibility && <Tag>{t(place.visibility === "shared" ? "sharedTag" : "privateTag")}</Tag>}
             {place.sample && <Tag tone="accent">{t("sample")}</Tag>}
           </div>
           {place.hoursNote && <p className="mt-1.5 text-sm text-muted">{place.hoursNote}</p>}
@@ -121,8 +128,29 @@ export function PlacePeek({ placeId }: { placeId: string }) {
         </section>
       )}
 
-      <div className="mt-8 border-t border-line pt-4">
-        <Button variant="danger" small onClick={() => window.confirm(t("confirmDeletePlace")) && deletePlace(place.id)}><Trash2 size={13} />{t("delete")}</Button>
+      <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+        <Button variant="danger" small onClick={() => window.confirm(t("confirmDeletePlace")) && deletePlace(place.id)}><Trash2 size={13} />{t(userId ? "removeFromDiary" : "delete")}</Button>
+        {userId && place.visibility === "shared" && place.createdBy !== userId && (
+          reported ? (
+            <span className="text-xs text-muted" role="status">{t("reportSent")}</span>
+          ) : (
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <Flag size={13} />
+              <span className="sr-only">{t("report")}</span>
+              <select
+                className="rounded border border-line bg-surface px-1.5 py-1 text-xs"
+                value=""
+                onChange={async (e) => {
+                  const reason = e.target.value as ReportReason;
+                  if (reason && (await reportPlace(place.id, reason))) setReported(true);
+                }}
+              >
+                <option value="">{t("report")}: {t("reportPick")}</option>
+                {(["duplicate", "wrong_info", "closed", "abuse"] as const).map((r) => <option key={r} value={r}>{t(`report_${r}`)}</option>)}
+              </select>
+            </label>
+          )
+        )}
       </div>
     </SidePanel>
   );

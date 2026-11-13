@@ -15,15 +15,19 @@ export default function PlacesPage() {
   const dishes = useStore((s) => s.dishes);
   const logs = useStore((s) => s.logs);
   const setPeek = useStore((s) => s.setPeek);
+  const userId = useStore((s) => s.userId);
   const [query, setQuery] = useState("");
 
   const rows = useMemo(
     () =>
       places
-        .filter((p) => !query.trim() || matchesQuery(`${p.name} ${p.area}`, query))
-        .map((p) => ({ place: p, summary: summarizePlace(p.id, dishes, logs), dishCount: dishes.filter((d) => d.placeId === p.id).length }))
+        .filter((p) => !query.trim() || matchesQuery(`${p.name} ${p.area} ${p.address ?? ""}`, query))
+        .map((p) => ({ place: p, summary: summarizePlace(p.id, dishes, logs) }))
+        // "My places": ones I have logged, wishlisted or added. A shared place I only looked at is left out.
+        .filter((r) => r.summary.status || r.place.wishlist || !userId || r.place.createdBy === userId)
+        .map((r) => ({ ...r, dishCount: r.summary.love + r.summary.ok + r.summary.never }))
         .sort((a, b) => (b.summary.lastDate ?? "").localeCompare(a.summary.lastDate ?? "")),
-    [places, dishes, logs, query],
+    [places, dishes, logs, query, userId],
   );
 
   return (
@@ -42,7 +46,7 @@ export default function PlacesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate font-semibold">{place.name}</div>
-                    <div className="mt-0.5 flex items-center gap-1 text-xs text-muted"><MapPin size={12} />{place.area || "—"}</div>
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-muted"><MapPin size={12} className="shrink-0" /><span className="truncate">{[place.address, place.area].filter(Boolean).join(", ") || "—"}</span></div>
                   </div>
                   <PlaceCounts summary={summary} />
                 </div>

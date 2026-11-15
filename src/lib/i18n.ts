@@ -179,7 +179,8 @@ const D = {
   demoBanner: ["Bạn đang dùng thử: dữ liệu chỉ lưu trên trình duyệt này.", "You are trying the demo: data is saved only in this browser."],
   demoBannerSamples: ["Các mục bên dưới là dữ liệu mẫu.", "The entries below are samples."],
   loadingDiary: ["Đang tải nhật ký…", "Loading your diary…"],
-  syncError: ["Có thay đổi chưa lưu được. Nhật ký đã được tải lại từ tài khoản.", "A change could not be saved. Your diary was reloaded from your account."],
+  syncError: ["Không lưu được thay đổi vừa rồi, nên nhật ký đã được tải lại từ tài khoản. Hãy tải lại trang rồi thử lại.", "Your last change could not be saved, so the diary was reloaded from your account. Reload the page and try again."],
+  reloadPage: ["Tải lại trang", "Reload page"],
   cloudNote: ["Nhật ký được lưu trong tài khoản của bạn. Chỉ mình bạn đọc và sửa được.", "Your diary is saved in your account. Only you can read or change it."],
   /* platforms */
   p_grab: ["GrabFood", "GrabFood"],

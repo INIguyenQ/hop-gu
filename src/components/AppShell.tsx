@@ -85,12 +85,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <span className="font-semibold">{APP_NAME}</span>
         </div>
-        {syncError && (
-          <div className="flex items-center justify-between gap-3 bg-danger-soft px-4 py-2 text-sm text-danger" role="alert">
-            <span>{t("syncError")}</span>
-            <button type="button" className="rounded px-2 py-0.5 font-medium hover:bg-surface" onClick={dismissSyncError}>{t("close")}</button>
-          </div>
-        )}
         <main className="min-h-0 flex-1 overflow-y-auto">
           {loading ? <div className="flex h-full items-center justify-center text-muted" aria-busy="true">{t("loadingDiary")}</div> : children}
         </main>
@@ -99,6 +93,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {logOpen && <LogPanel />}
       {paletteOpen && <CommandPalette />}
       {authOpen && <AuthDialog />}
+      {/* Above every panel, so a failed save can never go unnoticed. */}
+      {syncError && (
+        <div className="anim-pop fixed inset-x-3 top-3 z-[60] mx-auto flex max-w-[520px] flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-danger bg-danger-soft px-4 py-3 text-sm text-danger shadow-pop" role="alert">
+          <span className="min-w-0 flex-1">{t("syncError")}</span>
+          <button type="button" className="rounded border border-danger px-2 py-0.5 font-medium hover:bg-surface" onClick={() => window.location.reload()}>{t("reloadPage")}</button>
+          <button type="button" className="rounded px-2 py-0.5 font-medium hover:bg-surface" onClick={dismissSyncError}>{t("close")}</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link2, Loader2, MapPin, Plus, Store, TriangleAlert, Users } from "lucide-react";
+import { Link2, Loader2, LocateFixed, MapPin, Plus, Store, TriangleAlert, Users } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store";
 import { useT, type Key } from "@/lib/i18n";
 import { looksLikeUrl, parseShareLink } from "@/lib/links";
@@ -21,6 +22,15 @@ interface Props {
 }
 
 type LinkState = "idle" | "reading" | "read" | "noName";
+type FindState = "idle" | "busy" | "ok" | "none" | "limit" | "error";
+
+// Whether address lookup is switched on is asked once and remembered.
+let geocodeEnabled: Promise<boolean> | null = null;
+const isGeocodeEnabled = () =>
+  (geocodeEnabled ??= fetch("/api/geocode")
+    .then((r) => r.json())
+    .then((b: unknown) => (b as { enabled?: unknown })?.enabled === true)
+    .catch(() => false));
 
 export function PlacePicker({ value, onChange, forWishlist }: Props) {
   const { t } = useT();
@@ -47,6 +57,18 @@ export function PlacePicker({ value, onChange, forWishlist }: Props) {
   const [linkState, setLinkState] = useState<LinkState>("idle");
   const [shared, setShared] = useState<Place[]>([]);
   const resolveRun = useRef(0);
+  const [canFind, setCanFind] = useState(false);
+  const [findState, setFindState] = useState<FindState>("idle");
+  const [focus, setFocus] = useState<(LatLng & { zoom?: number }) | null>(null);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let active = true;
+    isGeocodeEnabled().then((on) => active && setCanFind(on));
+    return () => {
+      active = false;
+    };
+  }, [signedIn]);
 
   const isUrl = looksLikeUrl(text);
   const link = useMemo(() => (isUrl ? parseShareLink(text) : null), [isUrl, text]);
@@ -113,6 +135,32 @@ export function PlacePicker({ value, onChange, forWishlist }: Props) {
       }
     } catch {
       if (run === resolveRun.current) setLinkState("noName");
+    }
+  };
+
+  /** Asks our server for the map position of the typed address. */
+  const findPin = async () => {
+    setFindState("busy");
+    try {
+      const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+      if (!token) return setFindState("error");
+      const res = await fetch("/api/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ address, area }),
+      });
+      const body = (await res.json()) as { ok?: boolean; lat?: unknown; lng?: unknown; reason?: unknown };
+      if (body.ok === true && typeof body.lat === "number" && typeof body.lng === "number") {
+        const pos = { lat: body.lat, lng: body.lng };
+        setPin(pos);
+        setFocus({ ...pos, zoom: 17 });
+        setShowMap(true);
+        setFindState("ok");
+      } else {
+        setFindState(body.reason === "no_result" || body.reason === "bad_address" ? "none" : body.reason === "daily_limit" || body.reason === "too_many" ? "limit" : "error");
+      }
+    } catch {
+      setFindState("error");
     }
   };
 
@@ -231,10 +279,23 @@ export function PlacePicker({ value, onChange, forWishlist }: Props) {
             <input className="field" value={hours} maxLength={120} placeholder={t("hoursHint")} onChange={(e) => setHours(e.target.value)} />
           </label>
           <div>
-            <Button small onClick={() => setShowMap((v) => !v)}><MapPin size={14} />{pin ? t("pinSet") : t("pin")}</Button>
+            <div className="flex flex-wrap gap-2">
+              {canFind && (
+                <Button small disabled={findState === "busy" || address.trim().length < 5} onClick={findPin}>
+                  {findState === "busy" ? <Loader2 size={14} className="animate-spin" /> : <LocateFixed size={14} />}
+                  {t(findState === "busy" ? "findPinBusy" : "findPin")}
+                </Button>
+              )}
+              <Button small onClick={() => setShowMap((v) => !v)}><MapPin size={14} />{pin ? t("pinSet") : t("pin")}</Button>
+            </div>
+            {findState !== "idle" && findState !== "busy" && (
+              <p className={cx("mt-1.5 text-xs", findState === "ok" ? "text-brand" : "text-okay")} role="status">
+                {t(findState === "ok" ? "findPinOk" : findState === "none" ? "findPinNone" : findState === "limit" ? "findPinLimit" : "findPinError")}
+              </p>
+            )}
             {showMap && (
               <div className="mt-2">
-                <MapCanvas label={t("pin")} className="h-52 w-full overflow-hidden rounded-md border border-line" points={[]} picked={pin} onPick={setPin} />
+                <MapCanvas label={t("pin")} className="h-52 w-full overflow-hidden rounded-md border border-line" points={[]} picked={pin} onPick={setPin} focus={focus} />
                 <p className="mt-1 text-xs text-muted">{t("pinHint")}</p>
               </div>
             )}

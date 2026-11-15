@@ -4,6 +4,7 @@ import { normalizeVi, matchesQuery, distanceMeters } from "./text.ts";
 import { parseShareLink, looksLikeUrl } from "./links.ts";
 import { acceptableUrl, decodeEntities, extractTitle, resolveShareLink } from "./linkResolver.ts";
 import { guessDishType, DISH_TYPES } from "./dishTypes.ts";
+import { buildQuery, geocodeAddress } from "./geocode.ts";
 import { computeTaste } from "./taste.ts";
 import { summarizePlace } from "./derive.ts";
 import type { Dish, Log } from "./types.ts";
@@ -154,4 +155,31 @@ test("summarizePlace uses the latest verdict per dish", () => {
   const s = summarizePlace("p1", dishes, logs);
   assert.deepEqual([s.love, s.ok, s.never, s.status], [1, 0, 1, "love"]);
   assert.equal(summarizePlace("p2", dishes, logs).status, null);
+});
+
+test("geocode: builds a sensible query and refuses junk", () => {
+  assert.equal(buildQuery("282/52/10 Bùi Hữu Nghĩa, P. 2", "Bình Thạnh"), "282/52/10 Bùi Hữu Nghĩa, P. 2, Bình Thạnh, TP. Hồ Chí Minh");
+  assert.equal(buildQuery("12 Lê Lợi, Bình Thạnh", "Bình Thạnh"), "12 Lê Lợi, Bình Thạnh, TP. Hồ Chí Minh");
+  assert.equal(buildQuery("36 Hàng Bạc, Hoàn Kiếm, Hà Nội", ""), "36 Hàng Bạc, Hoàn Kiếm, Hà Nội");
+  assert.equal(buildQuery("  ab ", "Quận 1"), null);
+  assert.equal(buildQuery("!!!???", ""), null);
+});
+
+test("geocode: reads a Google-style reply, keeps the key out of errors, rejects odd results", async () => {
+  const reply = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
+  const good = { results: [{ formatted_address: "282 Bùi Hữu Nghĩa, <b>Bình Thạnh</b>", geometry: { location: { lat: 10.8001, lng: 106.7005 } } }], status: "OK" };
+
+  let seen = "";
+  const ok = await geocodeAddress("282/52/10 Bùi Hữu Nghĩa", "Bình Thạnh", "SECRET&x=1", async (url) => { seen = url; return new Response(JSON.stringify(good)); });
+  assert.deepEqual(ok, { ok: true, lat: 10.8001, lng: 106.7005, label: "282 Bùi Hữu Nghĩa, b Bình Thạnh /b" });
+  assert.ok(seen.startsWith("https://rsapi.goong.io/Geocode?address=282%2F52%2F10"), seen);
+  assert.ok(seen.endsWith("&api_key=SECRET%26x%3D1"), seen);
+
+  assert.deepEqual(await geocodeAddress("12 Lê Lợi", "", "k", reply({ results: [] })), { ok: false, reason: "no_result" });
+  // A position outside Vietnam is not accepted.
+  assert.deepEqual(await geocodeAddress("12 Lê Lợi", "", "k", reply({ results: [{ geometry: { location: { lat: 48.85, lng: 2.35 } } }] })), { ok: false, reason: "no_result" });
+  assert.deepEqual(await geocodeAddress("12 Lê Lợi", "", "k", reply({ results: [{ geometry: { location: { lat: "10", lng: 106 } } }] })), { ok: false, reason: "unavailable" });
+  assert.deepEqual(await geocodeAddress("12 Lê Lợi", "", "k", reply({ error: { code: "API_KEY_INVALID" } }, 403)), { ok: false, reason: "unavailable" });
+  assert.deepEqual(await geocodeAddress("12 Lê Lợi", "", "k", async () => { throw new Error("https://rsapi.goong.io/Geocode?api_key=k failed"); }), { ok: false, reason: "unavailable" });
+  assert.deepEqual(await geocodeAddress("x", "", "k", async () => { throw new Error("must not be called"); }), { ok: false, reason: "bad_address" });
 });
